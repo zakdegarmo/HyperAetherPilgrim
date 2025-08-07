@@ -1,13 +1,9 @@
 {
-  "builds": [
-    {
-      "src": "api/grubber.js",
-      "use": "@vercel/node",
-      "config": {
-        "excludeFiles": "index.js"
-      }
+  "functions": {
+    "api/grubber.js": {
+      "runtime": "@vercel/bun@1.0.0"
     }
-  ],
+  },
   "routes": [
     {
       "src": "/api/grubber",
