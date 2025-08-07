@@ -10,6 +10,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+	"bun": "latest",
     "jsdom": "^26.1.0"
   }
 }
