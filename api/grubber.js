@@ -1,11 +1,10 @@
-// api/grubber.js
-
 import { JSDOM } from 'jsdom';
 
-// Vercel serverless functions use a specific request/response model
-// where the handler function receives a request object and returns a response.
-export default async function handler(request, response) {
-  const url = new URL(request.url);
+export default async function handler(request) {
+  // Construct a base URL from the request headers
+  const baseURL = `https://${request.headers.host}`;
+  // The URL constructor can now handle the relative URL with the base
+  const url = new URL(request.url, baseURL);
   const targetUrl = url.searchParams.get('url');
 
   if (!targetUrl) {
