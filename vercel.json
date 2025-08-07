@@ -5,7 +5,16 @@
       "use": "@vercel/node",
       "config": {
         "excludeFiles": "index.js"
-      }
+      } ],
+  "routes": [
+    {
+      "src": "/api/grubber",
+      "dest": "api/grubber.js"
+    },{
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+
     }
   ]
 }
