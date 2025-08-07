@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HyperAetherPilgrim</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+    <script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/"
+  }
+}
+</script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #0B1120; }
+        canvas { display: block; }
+        .hud {
+            text-shadow: 0px 0px 8px rgba(255, 255, 255, 0.4);
+        }
+        .hud-content {
+            transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+        }
+        .hud-hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+    </style>
+  </head>
+  <body class="font-sans">
+    <div id="hud-container" class="hud absolute top-4 left-4 z-10 pointer-events-none">
+        <div id="hud-content" class="w-96 p-4 rounded-xl pointer-events-auto bg-slate-900/80 backdrop-blur-sm">
+          <h1 id="hud-title" class="text-xl font-bold mb-1 text-yellow-400">
+            HyperAetherPilgrim
+          </h1>
+          <p id="hud-description" class="text-xs text-slate-300 mb-2">
+            A visual journey through the interconnected web.
+          </p>
+          <div id="hud-url-input" class="flex justify-center items-center gap-2 mb-2">
+            <input type="text" id="url-input" class="w-full px-2 py-1 text-xs rounded-lg bg-slate-800 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400 border border-slate-700" placeholder="Enter URL here (e.g., https://example.com)" />
+            <button id="go-btn" class="px-3 py-1 text-xs rounded-lg bg-cyan-600 text-white font-semibold hover:bg-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-400 border border-transparent">Go</button>
+          </div>
+          <div id="hud-selection" class="text-cyan-400 font-semibold text-xs h-3"></div>
+        </div>
+      </div>
+      <button id="hide-hud-btn" class="absolute top-4 right-4 z-20 px-3 py-1 text-xs rounded-lg bg-slate-900/80 text-white hover:bg-slate-800 backdrop-blur-sm pointer-events-auto">Hide HUD</button>
+    <div id="container"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { Line2 } from 'three/addons/lines/Line2.js';
+        import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+        import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+
+
+        let camera, scene, renderer, controls;
+        let nodesGroup = new THREE.Group();
+        let linesGroup = new THREE.Group();
+        let hub;
+        let currentNode = null; // The node currently being visualized
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const hudSelection = document.getElementById('hud-selection');
+        const urlInput = document.getElementById('url-input');
+        const goBtn = document.getElementById('go-btn');
+        const hudContent = document.getElementById('hud-content');
+        const hideHudBtn = document.getElementById('hide-hud-btn');
+
+        function init() {
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x0B1120, 0.005);
+
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 5000);
+            camera.position.set(0, 50, 200);
+
+            // Controls
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 50;
+            controls.maxDistance = 500;
+            controls.autoRotate = false;
+            controls.autoRotateSpeed = 0.2;
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+            scene.add(ambientLight);
+
+            const pointLight = new THREE.PointLight(0xffffff, 1.5, 1000);
+            pointLight.position.set(0, 0, 0);
+            scene.add(pointLight);
+
+            // Central Hub (Pillar 0)
+            const hubGeometry = new THREE.IcosahedronGeometry(15, 3);
+            const hubMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true });
+            hub = new THREE.Mesh(hubGeometry, hubMaterial);
+            hub.userData = { id: 0, name: "The Central Root", description: "The origin point of all concepts." };
+            scene.add(hub);
+            scene.add(nodesGroup);
+            scene.add(linesGroup); // Add lines group to scene
+            
+            window.addEventListener('resize', onWindowResize);
+            document.addEventListener('click', onClick);
+            document.addEventListener('mousemove', onMouseMove);
+            goBtn.addEventListener('click', onGoClick);
+            hideHudBtn.addEventListener('click', onHideHudClick);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onMouseMove(event) {
+            event.preventDefault();
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(nodesGroup.children);
+
+            if (intersects.length > 0) {
+                const intersectedNode = intersects[0].object;
+                hudSelection.textContent = `${intersectedNode.userData.url}`;
+            } else {
+                hudSelection.textContent = '';
+            }
+        }
+
+        function onClick(event) {
+            event.preventDefault();
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(nodesGroup.children);
+            
+            if (intersects.length > 0) {
+                const selectedNode = intersects[0].object;
+                const url = selectedNode.userData.url;
+                urlInput.value = url;
+                currentNode = selectedNode; // Set the clicked node as the new parent
+                onGoClick();
+            }
+        }
+        
+        async function fetchLinks(url) {
+            try {
+                const response = await fetch(`/api/grubber?url=${encodeURIComponent(url)}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                return data.links;
+            } catch (error) {
+                console.error('Failed to fetch links:', error);
+                return [];
+            }
+        }
+        
+        function clearNodes() {
+            while(nodesGroup.children.length > 0) {
+                const child = nodesGroup.children[0];
+                nodesGroup.remove(child);
+                child.geometry.dispose();
+                child.material.dispose();
+            }
+            while(linesGroup.children.length > 0) {
+                const child = linesGroup.children[0];
+                linesGroup.remove(child);
+                if(child.geometry) child.geometry.dispose();
+                if(child.material) child.material.dispose();
+            }
+        }
+
+        function createNodes(links, parentPosition = new THREE.Vector3(0, 0, 0)) {
+            if (parentPosition.x === 0 && parentPosition.y === 0 && parentPosition.z === 0) {
+                clearNodes(); // Clear only for the initial page load
+            }
+            
+            const nodeCount = links.length;
+            const nodeGeometry = new THREE.ConeGeometry(5, 20, 4);
+            
+            for (let i = 0; i < nodeCount; i++) {
+                const hue = i / nodeCount;
+                const nodeMaterial = new THREE.MeshStandardMaterial({
+                    color: new THREE.Color().setHSL(hue, 0.8, 0.6),
+                    emissive: new THREE.Color().setHSL(hue, 0.5, 0.3),
+                    metalness: 0.8,
+                    roughness: 0.4
+                });
+                const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
+                
+                const angle = (i / nodeCount) * Math.PI * 2;
+                const radius = 100;
+                const x = Math.cos(angle) * radius;
+                const y = Math.sin(angle) * 15;
+                const z = Math.sin(angle) * radius;
+
+                node.position.set(x, y, z);
+                node.position.add(parentPosition);
+                node.lookAt(parentPosition);
+                node.userData = { id: i + 1, url: links[i], parent: parentPosition };
+                nodesGroup.add(node);
+
+                // Add line to parent
+                const lineGeo = new LineGeometry();
+                lineGeo.setPositions([
+                    parentPosition.x, parentPosition.y, parentPosition.z,
+                    node.position.x, node.position.y, node.position.z
+                ]);
+                const lineMat = new LineMaterial({ color: 0x4b5563, linewidth: 2, worldUnits: false });
+                lineMat.resolution.set(window.innerWidth, window.innerHeight);
+                const line = new Line2(lineGeo, lineMat);
+                linesGroup.add(line);
+            }
+        }
+
+        async function onGoClick() {
+            const url = urlInput.value;
+            if (!url) {
+                alert("Please enter a URL.");
+                return;
+            }
+            
+            const links = await fetchLinks(url);
+            
+            if (currentNode) {
+                createNodes(links, currentNode.position);
+                currentNode = null; // Reset current node after creating children
+            } else {
+                createNodes(links, new THREE.Vector3(0, 0, 0));
+            }
+        }
+
+        function onHideHudClick() {
+            hudContent.classList.toggle('hud-hidden');
+            hideHudBtn.textContent = hudContent.classList.contains('hud-hidden') ? 'Show HUD' : 'Hide HUD';
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        init();
+        animate();
+    </script>
+  </body>
+</html>

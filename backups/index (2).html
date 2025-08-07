@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HyperAetherPilgrim</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+    <script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/"
+  }
+}
+</script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #0B1120; }
+        canvas { display: block; }
+        .hud {
+            text-shadow: 0px 0px 8px rgba(255, 255, 255, 0.4);
+        }
+        .hud-content {
+            transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+        }
+        .hud-hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+    </style>
+  </head>
+  <body class="font-sans">
+    <div id="hud-container" class="hud absolute top-4 left-4 z-10 pointer-events-none">
+        <div id="hud-content" class="w-96 p-4 rounded-xl pointer-events-auto bg-slate-900/80 backdrop-blur-sm">
+          <h1 id="hud-title" class="text-xl font-bold mb-1 text-yellow-400">
+            HyperAetherPilgrim
+          </h1>
+          <p id="hud-description" class="text-xs text-slate-300 mb-2">
+            A visual journey through the interconnected web.
+          </p>
+          <div id="hud-url-input" class="flex justify-center items-center gap-2 mb-2">
+            <input type="text" id="url-input" class="w-full px-2 py-1 text-xs rounded-lg bg-slate-800 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400 border border-slate-700" placeholder="Enter URL here (e.g., https://example.com)" />
+            <button id="go-btn" class="px-3 py-1 text-xs rounded-lg bg-cyan-600 text-white font-semibold hover:bg-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-400 border border-transparent">Go</button>
+          </div>
+          <div id="hud-instructions" class="text-xs text-slate-400 mb-2">
+            <p><strong>Press L</strong> to lock/unlock mouse</p>
+            <p><strong>Click a node</strong> to see where it goes</p>
+            <a href="#" id="help-link" class="text-cyan-400 hover:underline">Click for help</a>
+          </div>
+          <div id="hud-selection" class="text-cyan-400 font-semibold text-xs h-3"></div>
+        </div>
+      </div>
+      <button id="hide-hud-btn" class="absolute top-4 right-4 z-20 px-3 py-1 text-xs rounded-lg bg-slate-900/80 text-white hover:bg-slate-800 backdrop-blur-sm pointer-events-auto">Hide HUD</button>
+      <button id="camera-lock-btn" class="absolute bottom-4 right-4 z-20 px-3 py-1 text-xs rounded-lg bg-slate-900/80 text-white hover:bg-slate-800 backdrop-blur-sm pointer-events-auto">Lock Camera</button>
+    <div id="container"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { Line2 } from 'three/addons/lines/Line2.js';
+        import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+        import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+
+
+        let camera, scene, renderer;
+        let nodesGroup = new THREE.Group();
+        let linesGroup = new THREE.Group();
+        let hub;
+        let currentNode = null;
+        let allNodes = new Map();
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        const hudSelection = document.getElementById('hud-selection');
+        const urlInput = document.getElementById('url-input');
+        const goBtn = document.getElementById('go-btn');
+        const hudContent = document.getElementById('hud-content');
+        const hideHudBtn = document.getElementById('hide-hud-btn');
+        const cameraLockBtn = document.getElementById('camera-lock-btn');
+        const clock = new THREE.Clock();
+        const helpLink = document.getElementById('help-link');
+
+        let keyboard = {};
+        const moveSpeed = 100;
+        const lookSpeed = 0.005;
+
+        function init() {
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x0B1120, 0.005);
+
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            // Removed: document.body.style.cursor = 'none';
+
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 5000);
+            camera.position.set(0, 50, 200);
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+            scene.add(ambientLight);
+
+            const pointLight = new THREE.PointLight(0xffffff, 1.5, 1000);
+            pointLight.position.set(0, 0, 0);
+            scene.add(pointLight);
+
+            // Central Hub (Pillar 0)
+            const hubGeometry = new THREE.IcosahedronGeometry(15, 3);
+            const hubMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true });
+            hub = new THREE.Mesh(hubGeometry, hubMaterial);
+            hub.userData = { id: 0, name: "The Central Root", description: "The origin point of all concepts." };
+            scene.add(hub);
+            scene.add(nodesGroup);
+            scene.add(linesGroup);
+            
+            window.addEventListener('resize', onWindowResize);
+            document.addEventListener('click', onClick, false);
+            document.addEventListener('mousemove', onMouseMove, false);
+            document.addEventListener('keydown', onKeyDown, false);
+            document.addEventListener('keyup', onKeyUp, false);
+            goBtn.addEventListener('click', onGoClick);
+            hideHudBtn.addEventListener('click', onHideHudClick);
+            cameraLockBtn.addEventListener('click', onCameraLockClick, false);
+            helpLink.addEventListener('click', onHelpClick, false);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function onKeyDown(event) { 
+            keyboard[event.code] = true; 
+            if (event.code === 'Escape') {
+                document.exitPointerLock();
+            } else if (event.code === 'KeyL') {
+                 renderer.domElement.requestPointerLock();
+            }
+        }
+        function onKeyUp(event) { keyboard[event.code] = false; }
+
+        function onCameraLockClick() {
+            renderer.domElement.requestPointerLock();
+        }
+        
+        function onHelpClick(event) {
+            event.preventDefault();
+            alert("This will be a help page with instructions for the controls and the application's functionality.");
+        }
+
+        function onMouseMove(event) {
+            if (document.pointerLockElement === renderer.domElement) {
+                const deltaX = -event.movementX * lookSpeed;
+                const deltaY = -event.movementY * lookSpeed;
+
+                const quaternion = new THREE.Quaternion();
+                quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), deltaX);
+                camera.quaternion.multiplyQuaternions(quaternion, camera.quaternion);
+
+                const cameraXAxis = new THREE.Vector3(1, 0, 0);
+                cameraXAxis.applyQuaternion(camera.quaternion);
+                quaternion.setFromAxisAngle(cameraXAxis, deltaY);
+                camera.quaternion.multiplyQuaternions(quaternion, camera.quaternion);
+            }
+        }
+
+        function onClick(event) {
+            event.preventDefault();
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(nodesGroup.children);
+            if (intersects.length > 0) {
+                const selectedNode = intersects[0].object;
+                const url = selectedNode.userData.url;
+                urlInput.value = url;
+                
+                if (selectedNode.userData.childrenVisible) {
+                     hideChildren(selectedNode);
+                     toggleWireframe(selectedNode);
+                } else if (selectedNode.userData.children.length > 0) {
+                     showChildren(selectedNode);
+                     toggleWireframe(selectedNode);
+                } else {
+                     currentNode = selectedNode;
+                     onGoClick();
+                     toggleWireframe(selectedNode);
+                }
+            }
+        }
+
+        function toggleWireframe(node) {
+            node.material.wireframe = !node.material.wireframe;
+        }
+
+        function toggleChildren(node) {
+            if (node.userData.childrenVisible) {
+                hideChildren(node);
+            } else {
+                showChildren(node);
+            }
+        }
+        
+        function hideChildren(node) {
+            if (!node.userData.children) return;
+            node.userData.children.forEach(child => {
+                if (nodesGroup.children.includes(child)) {
+                    nodesGroup.remove(child);
+                    linesGroup.remove(child.userData.line);
+                    hideChildren(child);
+                }
+            });
+            node.userData.childrenVisible = false;
+        }
+
+        function showChildren(node) {
+            if (!node.userData.children) return;
+            node.userData.children.forEach(child => {
+                if (!nodesGroup.children.includes(child)) {
+                    nodesGroup.add(child);
+                    linesGroup.add(child.userData.line);
+                    showChildren(child);
+                }
+            });
+            node.userData.childrenVisible = true;
+        }
+        
+        async function fetchLinks(url, parentPosition) {
+            try {
+                const response = await fetch(`/api/grubber?url=${encodeURIComponent(url)}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                createNodes(data.links, url, parentPosition);
+            } catch (error) {
+                console.error('Failed to fetch links:', error);
+                // Handle error on HUD
+            }
+        }
+        
+        function clearNodes() {
+            nodesGroup.children.forEach(child => {
+                child.geometry.dispose();
+                child.material.dispose();
+            });
+            linesGroup.children.forEach(child => {
+                if(child.geometry) child.geometry.dispose();
+                if(child.material) child.material.dispose();
+            });
+            nodesGroup.clear();
+            linesGroup.clear();
+            allNodes.clear();
+        }
+
+        function createNodes(links, parentUrl, parentPosition) {
+            const nodeGeometry = new THREE.BoxGeometry(10, 10, 10);
+            const parentNode = allNodes.get(parentUrl);
+            const newNodes = [];
+
+            links.forEach((link, i) => {
+                if (!allNodes.has(link)) {
+                    const hue = Math.random();
+                    const nodeMaterial = new THREE.MeshBasicMaterial({
+                        color: new THREE.Color().setHSL(hue, 0.8, 0.6),
+                        wireframe: true
+                    });
+                    const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
+                    
+                    const angle = (i / links.length) * Math.PI * 2;
+                    const radius = 100;
+                    const x = Math.cos(angle) * radius;
+                    const y = Math.sin(angle * 2) * 20;
+                    const z = Math.sin(angle) * radius;
+    
+                    node.position.set(x, y, z);
+                    node.position.add(parentPosition);
+                    node.lookAt(parentPosition);
+                    node.userData = { url: link, parentUrl: parentUrl, children: [], childrenVisible: true, line: null };
+                    
+                    nodesGroup.add(node);
+                    allNodes.set(link, node);
+                    newNodes.push(node);
+
+                    const lineGeo = new LineGeometry();
+                    lineGeo.setPositions([
+                        parentPosition.x, parentPosition.y, parentPosition.z,
+                        node.position.x, node.position.y, node.position.z
+                    ]);
+                    const lineMat = new LineMaterial({ color: 0x4b5563, linewidth: 2, worldUnits: false });
+                    lineMat.resolution.set(window.innerWidth, window.innerHeight);
+                    const line = new Line2(lineGeo, lineMat);
+                    linesGroup.add(line);
+                    node.userData.line = line;
+                }
+            });
+
+            if (parentNode) {
+                parentNode.userData.children = [...parentNode.userData.children, ...newNodes];
+            } else {
+                const rootNodeGeometry = new THREE.BoxGeometry(20, 20, 20);
+                const rootNodeMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: false });
+                const rootNode = new THREE.Mesh(rootNodeGeometry, rootNodeMaterial);
+                rootNode.position.copy(parentPosition);
+                rootNode.userData = { url: parentUrl, parentUrl: null, children: newNodes, childrenVisible: true, line: null };
+                nodesGroup.add(rootNode);
+                allNodes.set(parentUrl, rootNode);
+            }
+        }
+        
+        async function onGoClick() {
+            const url = urlInput.value;
+            if (!url) {
+                alert("Please enter a URL.");
+                return;
+            }
+            
+            const parentPosition = currentNode ? currentNode.position : new THREE.Vector3(0, 0, 0);
+            
+            if (allNodes.has(url)) {
+                 const node = allNodes.get(url);
+                 if (node.userData.childrenVisible) {
+                     hideChildren(node);
+                 } else {
+                     showChildren(node);
+                 }
+            } else {
+                 await fetchLinks(url, parentPosition);
+            }
+        }
+
+        function onHideHudClick() {
+            hudContent.classList.toggle('hud-hidden');
+            hideHudBtn.textContent = hudContent.classList.contains('hud-hidden') ? 'Show HUD' : 'Hide HUD';
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const delta = clock.getDelta();
+            const move = new THREE.Vector3(0, 0, 0);
+
+            if (keyboard['KeyW']) move.z -= moveSpeed * delta;
+            if (keyboard['KeyS']) move.z += moveSpeed * delta;
+            if (keyboard['KeyA']) move.x -= moveSpeed * delta;
+            if (keyboard['KeyD']) move.x += moveSpeed * delta;
+            if (keyboard['KeyR']) move.y += moveSpeed * delta;
+            if (keyboard['KeyF']) move.y -= moveSpeed * delta;
+            
+            camera.translateX(move.x);
+            camera.translateY(move.y);
+            camera.translateZ(move.z);
+            
+            renderer.render(scene, camera);
+        }
+
+        init();
+        animate();
+    </script>
+  </body>
+</html>
