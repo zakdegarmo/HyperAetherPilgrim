@@ -1,4 +1,4 @@
-// main.js
+// main.js - Corrected createNodes function
 
 import * as THREE from 'three';
 import { Line2 } from 'three/addons/lines/Line2.js';
@@ -61,7 +61,6 @@ function init() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
 
-  // Use OrbitControls for a good user experience, it's easier than manual camera controls
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.1;
@@ -144,18 +143,8 @@ async function fetchLinks(url, parentPosition, depth = 1) {
   }
 }
 
+// ** This is the updated function **
 function createNodes(links, parentUrl, parentPosition, depth = 1) {
-  const parentShape = getShapeByDepth(depth - 1);
-  const geometryPoints = parentShape.attributes.position.array;
-  const positions = [];
-
-  for (let i = 0; i < links.length; i++) {
-    const ix = (i % (geometryPoints.length / 3)) * 3;
-    const p = new THREE.Vector3(geometryPoints[ix], geometryPoints[ix + 1], geometryPoints[ix + 2]);
-    p.normalize().multiplyScalar(BASE_RADIUS * Math.pow(DEPTH_SCALE, depth - 1)).add(parentPosition);
-    positions.push(p);
-  }
-
   const parentNode = allNodes.get(parentUrl);
   if (parentNode && !parentNode.userData.childrenVisible) {
       parentNode.userData.childrenVisible = true;
@@ -166,8 +155,21 @@ function createNodes(links, parentUrl, parentPosition, depth = 1) {
       });
   }
 
+  const radius = BASE_RADIUS * Math.pow(DEPTH_SCALE, depth - 1);
+  const totalLinks = links.length;
+  
   links.forEach((link, i) => {
     if (allNodes.has(link)) return;
+
+    // Use spherical coordinates for positioning
+    const phi = Math.acos(-1 + (2 * i) / totalLinks);
+    const theta = Math.sqrt(totalLinks * Math.PI) * phi;
+    
+    const x = radius * Math.cos(theta) * Math.sin(phi);
+    const y = radius * Math.sin(theta) * Math.sin(phi);
+    const z = radius * Math.cos(phi);
+    
+    const position = new THREE.Vector3(x, y, z).add(parentPosition);
 
     const shapeGeo = getShapeByDepth(depth);
     const mat = new THREE.MeshBasicMaterial({
@@ -176,7 +178,7 @@ function createNodes(links, parentUrl, parentPosition, depth = 1) {
     });
     const node = new THREE.Mesh(shapeGeo, mat);
     node.scale.set(0.5, 0.5, 0.5);
-    node.position.copy(positions[i]);
+    node.position.copy(position);
     node.userData = {
       url: link,
       parentUrl,
@@ -192,7 +194,7 @@ function createNodes(links, parentUrl, parentPosition, depth = 1) {
     const lg = new LineGeometry();
     lg.setPositions([
       parentPosition.x, parentPosition.y, parentPosition.z,
-      positions[i].x,   positions[i].y,   positions[i].z
+      position.x,   position.y,   position.z
     ]);
 
     const lm = new LineMaterial({
@@ -221,7 +223,6 @@ function onGoClick() {
   const existingNode = allNodes.get(url);
   
   if (existingNode) {
-      // Logic to toggle visibility of children
       const childrenVisible = existingNode.userData.childrenVisible;
       if (childrenVisible) {
         hideChildren(existingNode);
@@ -229,7 +230,6 @@ function onGoClick() {
         showChildren(existingNode);
       }
   } else {
-      // New URL, fetch and create nodes
       fetchLinks(url, hub.position.clone(), 1);
   }
 }
