@@ -1,17 +1,12 @@
 {
-  "functions": {
-    "api/grubber.js": {
-      "runtime": "@vercel/bun@1.0.0"
-    }
-  },
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/grubber",
-      "dest": "api/grubber.js"
+      "source": "/api/grubber",
+      "destination": "/api/grubber.js"
     },
     {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
