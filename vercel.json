@@ -1,12 +1,17 @@
 {
-  "rewrites": [
+  "functions": {
+    "api/**/*.js": {
+      "runtime": "nodejs18.x"
+    }
+  },
+  "routes": [
     {
-      "source": "/api/grubber",
-      "destination": "/api/grubber.js"
+      "src": "/api/grubber",
+      "dest": "api/grubber.js"
     },
     {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ]
 }
