@@ -1,51 +1,65 @@
+// File: /api/grubber.js
+// A serverless function to fetch a URL and extract all hyperlink hrefs.
+
 import { JSDOM } from 'jsdom';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 
-export default async function handler(request) {
-  // Construct a base URL from the request headers
-  const baseURL = `https://${request.headers.host}`;
-  // The URL constructor can now handle the relative URL with the base
-  const url = new URL(request.url, baseURL);
-  const targetUrl = url.searchParams.get('url');
+// Define your local proxy agent
+const proxyUrl = 'http://localhost:3000';
+const agent = new HttpsProxyAgent(proxyUrl);
 
-  if (!targetUrl) {
-    return new Response(JSON.stringify({ error: 'URL parameter is missing.' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+export default async function handler(req, res) {
+    const targetUrl = req.query.url;
 
-  const linksFound = new Set();
-
-  try {
-    const fetchRes = await fetch(targetUrl);
-    if (!fetchRes.ok) {
-      throw new Error(`Failed to fetch: ${fetchRes.statusText}`);
+    if (!targetUrl) {
+        return res.status(400).json({ error: 'URL parameter is missing.' });
     }
-    const html = await fetchRes.text();
-    const dom = new JSDOM(html, { url: targetUrl });
-    const links = dom.window.document.querySelectorAll('a[href]');
 
-    links.forEach(link => {
-      let absoluteUrl;
-      try {
-        absoluteUrl = new URL(link.href, targetUrl).href;
-      } catch (e) {
-        return;
-      }
-      if (absoluteUrl.startsWith('http')) {
-        linksFound.add(absoluteUrl);
-      }
-    });
+    const fullUrl = targetUrl.startsWith('http') ? targetUrl : `https://` + targetUrl;
 
-    return new Response(JSON.stringify({ links: Array.from(linksFound) }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  } catch (error) {
-    console.error(`Error crawling ${targetUrl}: ${error.message}`);
-    return new Response(JSON.stringify({ error: `Failed to fetch or parse URL: ${error.message}` }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    try {
+        // Tell fetch to use the proxy agent for its requests
+        const response = await fetch(fullUrl, { 
+            signal: controller.signal,
+            agent: agent // This is the key change
+        });
+        
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
+        }
+        const html = await response.text();
+
+        const dom = new JSDOM(html, { url: fullUrl });
+        const document = dom.window.document;
+
+        const links = document.querySelectorAll('a[href]');
+        const linksFound = new Set();
+
+        links.forEach(link => {
+            try {
+                const absoluteUrl = new URL(link.href, fullUrl).href;
+                if (absoluteUrl.startsWith('http')) {
+                    linksFound.add(absoluteUrl);
+                }
+            } catch (e) {
+                // Ignore invalid URLs
+            }
+        });
+
+        res.status(200).json({ links: Array.from(linksFound) });
+
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            console.error(`Grubber function timed out for ${fullUrl}`);
+            res.status(504).json({ error: 'The request timed out while trying to crawl the URL.' });
+        } else {
+            console.error(`Grubber function error for ${fullUrl}:`, error.message);
+            res.status(500).json({ error: `Failed to fetch or parse URL: ${error.message}` });
+        }
+    }
 }

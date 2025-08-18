@@ -1,4 +1,4 @@
-// main.js - Corrected createNodes function
+// main.js - With Ontological Analyzer Logic
 
 import * as THREE from 'three';
 import { Line2 } from 'three/addons/lines/Line2.js';
@@ -11,19 +11,22 @@ let raycaster = new THREE.Raycaster();
 let mouse = new THREE.Vector2();
 let nodesGroup, linesGroup, hub;
 const allNodes = new Map();
-let keyboard = {};
 let isCameraLocked = true;
 
-const moveSpeed = 100;
-const lookSpeed = 0.005;
 const clock = new THREE.Clock();
 
+// --- DOM Elements ---
 const urlInput = document.getElementById('url-input');
 const goBtn = document.getElementById('go-btn');
 const hudContent = document.getElementById('hud-content');
 const hideHudBtn = document.getElementById('hide-hud-btn');
 const cameraLockBtn = document.getElementById('camera-lock-btn');
 const helpLink = document.getElementById('help-link');
+
+// --- NEW ANALYZER DOM ELEMENTS ---
+const apiKeyInput = document.getElementById('api-key-input');
+const analyzeBtn = document.getElementById('analyze-btn');
+const analysisOutput = document.getElementById('analysis-output');
 
 const BASE_RADIUS = 100;
 const DEPTH_SCALE = 0.6;
@@ -34,10 +37,6 @@ const SHAPE_GEOMETRIES = [
   () => new THREE.BoxGeometry(6, 6, 6),
   () => new THREE.OctahedronGeometry(6),
   () => new THREE.DodecahedronGeometry(6),
-  () => new THREE.IcosahedronGeometry(6, 1),
-  () => new THREE.IcosahedronGeometry(6, 2),
-  () => new THREE.IcosahedronGeometry(6, 3),
-  () => new THREE.SphereGeometry(6, 12, 12)
 ];
 
 function getShapeByDepth(depth) {
@@ -78,6 +77,7 @@ function init() {
   scene.add(hub);
   allNodes.set("", hub);
 
+  // --- Event Listeners ---
   window.addEventListener("resize", onWindowResize);
   renderer.domElement.addEventListener("click", onClick, false);
   
@@ -85,8 +85,57 @@ function init() {
   hideHudBtn.addEventListener("click", onHideHudClick);
   cameraLockBtn.addEventListener("click", onCameraLockClick);
   helpLink.addEventListener("click", onHelpClick);
+  
+  // --- NEW ANALYZER EVENT LISTENER ---
+  analyzeBtn.addEventListener("click", onAnalyzeClick);
 
   animate();
+}
+
+// --- NEW: Ontological Analyzer Function ---
+async function onAnalyzeClick() {
+    let targetUrl = urlInput.value.trim(); // Use 'let' to allow modification
+    const apiKey = apiKeyInput.value.trim();
+
+    // Automatically add "https://" if it's missing
+    if (targetUrl && !targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+        targetUrl = 'https://' + targetUrl;
+    }
+
+    if (!targetUrl) {
+        analysisOutput.textContent = "Error: Please enter a URL to analyze.";
+        return;
+    }
+    if (!apiKey) {
+        analysisOutput.textContent = "Error: Please enter your Gemini API Key.";
+        return;
+    }
+
+    analysisOutput.textContent = "Analyzing... please wait.";
+    analyzeBtn.disabled = true;
+    analyzeBtn.textContent = "Working...";
+
+    try {
+        const response = await fetch('/api/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetUrl, apiKey }),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'The server responded with an error.');
+        }
+
+        const data = await response.json();
+        analysisOutput.textContent = JSON.stringify(data, null, 2);
+
+    } catch (error) {
+        analysisOutput.textContent = `Error: ${error.message}`;
+    } finally {
+        analyzeBtn.disabled = false;
+        analyzeBtn.textContent = "Analyze Page";
+    }
 }
 
 function onWindowResize() {
@@ -116,26 +165,19 @@ function onClick(event) {
 
   const obj = hits[0].object;
   const url = obj.userData.url || "";
-  const nextDepth = (obj.userData.depth || 0) + 1;
-  const pos = obj.position.clone();
-
+  
   if (url) {
     urlInput.value = url;
-    fetchLinks(url, pos, nextDepth);
+    // We can decide if clicking a node should also trigger a fetch
+    fetchLinks(url, obj.position.clone(), (obj.userData.depth || 0) + 1);
   }
 }
 
 async function fetchLinks(url, parentPosition, depth = 1) {
   try {
-    console.log('[fetchLinks] Fetching:', `/api/grubber?url=${encodeURIComponent(url)}`);
     const res = await fetch(`/api/grubber?url=${encodeURIComponent(url)}`);
-
-    if (!res.ok) {
-      throw new Error('API error: ' + res.status);
-    }
-
+    if (!res.ok) throw new Error('API error: ' + res.status);
     const { links } = await res.json();
-    console.log('[fetchLinks] Links received:', links);
     createNodes(links, url, parentPosition, depth);
   } catch (err) {
     console.error('[fetchLinks] Error:', err);
@@ -143,12 +185,10 @@ async function fetchLinks(url, parentPosition, depth = 1) {
   }
 }
 
-// ** This is the updated function **
 function createNodes(links, parentUrl, parentPosition, depth = 1) {
   const parentNode = allNodes.get(parentUrl);
   if (parentNode && !parentNode.userData.childrenVisible) {
       parentNode.userData.childrenVisible = true;
-      // Re-add children and lines if they were hidden
       parentNode.userData.children.forEach(child => {
         nodesGroup.add(child);
         linesGroup.add(child.userData.line);
@@ -161,7 +201,6 @@ function createNodes(links, parentUrl, parentPosition, depth = 1) {
   links.forEach((link, i) => {
     if (allNodes.has(link)) return;
 
-    // Use spherical coordinates for positioning
     const phi = Math.acos(-1 + (2 * i) / totalLinks);
     const theta = Math.sqrt(totalLinks * Math.PI) * phi;
     
@@ -177,7 +216,6 @@ function createNodes(links, parentUrl, parentPosition, depth = 1) {
       wireframe: true
     });
     const node = new THREE.Mesh(shapeGeo, mat);
-    node.scale.set(0.5, 0.5, 0.5);
     node.position.copy(position);
     node.userData = {
       url: link,
@@ -213,8 +251,13 @@ function createNodes(links, parentUrl, parentPosition, depth = 1) {
 }
 
 function onGoClick() {
-  const url = urlInput.value.trim();
-  console.log('[Go Clicked] URL input:', url);
+  let url = urlInput.value.trim(); // Use 'let' to allow modification
+
+  // Automatically add "https://"" if it's missing
+  if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+    url = 'https://' + url;
+  }
+
   if (!url) {
     alert("Please enter a URL.");
     return;
@@ -222,7 +265,7 @@ function onGoClick() {
   
   const existingNode = allNodes.get(url);
   
-  if (existingNode) {
+  if (existingNode && existingNode !== hub) {
       const childrenVisible = existingNode.userData.childrenVisible;
       if (childrenVisible) {
         hideChildren(existingNode);
@@ -230,9 +273,18 @@ function onGoClick() {
         showChildren(existingNode);
       }
   } else {
+      clearScene();
+      hub.userData.url = url;
       fetchLinks(url, hub.position.clone(), 1);
   }
 }
+function clearScene() {
+    nodesGroup.clear();
+    linesGroup.clear();
+    allNodes.clear();
+    allNodes.set("", hub); // Keep the hub
+}
+
 
 function hideChildren(node) {
   if (!node.userData.children) return;
@@ -252,7 +304,9 @@ function showChildren(node) {
     if (!nodesGroup.children.includes(child)) {
       nodesGroup.add(child);
       linesGroup.add(child.userData.line);
-      showChildren(child);
+      if (child.userData.childrenVisible) { // Only show children if they were previously visible
+          showChildren(child);
+      }
     }
   });
   node.userData.childrenVisible = true;

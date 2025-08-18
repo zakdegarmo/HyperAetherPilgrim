@@ -40,16 +40,30 @@
             A visual journey through the interconnected web.
           </p>
           <div id="hud-url-input" class="flex justify-center items-center gap-2 mb-2">
-            <input type="text" id="url-input" class="w-full px-2 py-1 text-xs rounded-lg bg-slate-800 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400 border border-slate-700" placeholder="Enter URL here (e.g., https://example.com)" />
-            <button id="go-btn" class="px-3 py-1 text-xs rounded-lg bg-cyan-600 text-white font-semibold hover:bg-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-400 border border-transparent">Go</button>
-          </div>
+    <!-- Container to group the prefix and input -->
+    <div class="flex w-full rounded-lg bg-slate-800 border border-slate-700 focus-within:ring-2 focus-within:ring-cyan-400">
+        <span class="flex items-center pl-2 text-xs text-slate-400">https://</span>
+        <input type="text" id="url-input" class="w-full px-2 py-1 text-xs bg-transparent text-white placeholder-slate-400 focus:outline-none" placeholder="example.com" />
+    </div>
+    <button id="go-btn" class="px-3 py-1 text-xs rounded-lg bg-cyan-600 text-white font-semibold hover:bg-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-400 border border-transparent">Go</button>
+</div>
           <div id="hud-instructions" class="text-xs text-slate-400 mb-2">
             <p><strong>Click a node</strong> to crawl to its links</p>
             <p><strong>Mouse drag</strong> to rotate, <strong>scroll</strong> to zoom</p>
             <p>Click the "Lock Camera" button to toggle free movement</p>
             <a href="#" id="help-link" class="text-cyan-400 hover:underline">Click for help</a>
           </div>
-        </div>
+
+          <hr class="border-slate-700 my-3">
+          <h2 class="text-lg font-bold text-yellow-400 mb-2">Ontological Analyzer</h2>
+          <div id="hud-analyzer-input" class="flex flex-col gap-2 mb-2">
+            <input type="password" id="api-key-input" class="w-full px-2 py-1 text-xs rounded-lg bg-slate-800 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-400 border border-slate-700" placeholder="Enter Gemini API Key here" />
+            <button id="analyze-btn" class="w-full px-3 py-1 text-xs rounded-lg bg-purple-600 text-white font-semibold hover:bg-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-400 border border-transparent">Analyze Page</button>
+          </div>
+          <div id="analysis-output-container" class="mt-2">
+            <pre id="analysis-output" class="text-xs text-green-300 bg-black/50 p-2 rounded-lg w-full h-32 overflow-auto whitespace-pre-wrap break-words">Analysis results will appear here...</pre>
+          </div>
+          </div>
       </div>
       <button id="hide-hud-btn" class="absolute top-4 right-4 z-20 px-3 py-1 text-xs rounded-lg bg-slate-900/80 text-white hover:bg-slate-800 backdrop-blur-sm pointer-events-auto">Hide HUD</button>
       <button id="camera-lock-btn" class="absolute bottom-4 right-4 z-20 px-3 py-1 text-xs rounded-lg bg-slate-900/80 text-white hover:bg-slate-800 backdrop-blur-sm pointer-events-auto">Unlock Camera</button>

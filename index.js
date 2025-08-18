@@ -3,7 +3,10 @@
 import { file } from "bun";
 import grubberHandler from "./grubber.js";
 
+const PORT = 3900;
+
 Bun.serve({
+port:PORT,
   async fetch(request) {
     const url = new URL(request.url);
 
@@ -35,4 +38,4 @@ Bun.serve({
   },
 });
 
-console.log("Server running at http://localhost:3000");
+console.log("Server running at http://localhost:3900");
